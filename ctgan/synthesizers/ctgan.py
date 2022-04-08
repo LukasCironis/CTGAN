@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from packaging import version
 from torch import optim
-from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional
+from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional, parallel
 
 from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
@@ -279,7 +279,7 @@ class CTGANSynthesizer(BaseSynthesizer):
             raise ValueError(f'Invalid columns found: {invalid_columns}')
 
     @random_state
-    def fit(self, train_data, discrete_columns=(), epochs=None, transformer_load=False, transformer=None):
+    def fit(self, train_data, discrete_columns=(), epochs=None, transformer_load=False, transformer=None, multi_gpu=False, gpu_ids=None):
         """Fit the CTGAN Synthesizer models to the training data.
 
         Args:
@@ -316,19 +316,25 @@ class CTGANSynthesizer(BaseSynthesizer):
             self._log_frequency)
 
         data_dim = self._transformer.output_dimensions
-
-        self._generator = Generator(
+        
+        
+        generator = Generator(
             self._embedding_dim + self._data_sampler.dim_cond_vec(),
             self._generator_dim,
-            data_dim
-        ).to(self._device)
-
+            data_dim)
+                
         discriminator = Discriminator(
             data_dim + self._data_sampler.dim_cond_vec(),
             self._discriminator_dim,
-            pac=self.pac
-        ).to(self._device)
-
+            pac=self.pac)
+              
+        if multi_gpu:
+            self._generator = parallel.DistributedDataParallel(generator, device_ids=[gpu_ids])
+            discriminator = parallel.DistributedDataParallel(discriminator, device_ids=[gpu_ids])
+        else:
+            self._generator = generator.to(self._device)
+            discriminator = discriminator.to(self._device)
+            
         optimizerG = optim.Adam(
             self._generator.parameters(), lr=self._generator_lr, betas=(0.5, 0.9),
             weight_decay=self._generator_decay
