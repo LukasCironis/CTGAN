@@ -7,7 +7,8 @@ import pandas as pd
 import torch
 from packaging import version
 from torch import optim
-from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional, parallel
+from torch.nn import BatchNorm1d, Dropout, LeakyReLU, Linear, Module, ReLU, Sequential, functional
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
@@ -329,8 +330,8 @@ class CTGANSynthesizer(BaseSynthesizer):
             pac=self.pac)
               
         if multi_gpu:
-            self._generator = parallel.DistributedDataParallel(generator, device_ids=[gpu_ids])
-            discriminator = parallel.DistributedDataParallel(discriminator, device_ids=[gpu_ids])
+            self._generator = DDP(generator, device_ids=[gpu_ids])
+            discriminator = DDP(discriminator, device_ids=[gpu_ids])
         else:
             self._generator = generator.to(self._device)
             discriminator = discriminator.to(self._device)
